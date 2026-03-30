@@ -1,0 +1,113 @@
+# Orchestrator for seechange-slides (Presenton fork).
+# Release is created by Parse-Action-Tag (stringify) from pushes to the app repo dev branch.
+# Register repo seechange-slides in Seechange-edu/Parse-Action-Tag repositoryMap.
+
+name: Dev
+
+on:
+  release:
+    types: [published]
+
+env:
+  NAME: seechange-slides-dev
+  IMAGE_TAG: dev
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy to AWS (Dev)
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: get tag info
+        uses: Seechange-edu/Parse-Action-Tag@main
+        with:
+          githubToken: ${{ secrets.ACTION_TOKEN }}
+          type: parse
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          repository: SeeChange-edu/${{ env.REPOSITORY }}
+          token: ${{ secrets.ACTION_TOKEN }}
+          ref: ${{ env.BRANCH }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: GitHubActions-ECR-Push-SeechangeSlides-Dev
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to AWS ECR
+        id: login-aws-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-aws-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ vars.AWS_ECR_REPOSITORY }}
+          ACTIVE: ${{ env.ACTIVE }}
+        run: |
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}/${ACTIVE}:${ACTIVE}${{ github.sha }}"
+          docker build --tag ${IMAGE_URI} --tag ${ECR_REGISTRY}/${ECR_REPOSITORY}/${ACTIVE}:latest --file Dockerfile .
+          docker push ${IMAGE_URI}
+          docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}/${ACTIVE}:latest
+          echo "IMAGE_URI=${IMAGE_URI}" >> $GITHUB_ENV
+
+      - name: Get ECR login token
+        id: ecr-login-token
+        run: |
+          ECR_TOKEN=$(aws ecr get-login-password --region ${{ vars.AWS_REGION }})
+          echo "token<<EOF" >> $GITHUB_OUTPUT
+          echo "$ECR_TOKEN" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: SSH and run Docker container on AWS
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          ECR_TOKEN: ${{ steps.ecr-login-token.outputs.token }}
+          ECR_REGISTRY: ${{ steps.login-aws-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ vars.AWS_ECR_REPOSITORY }}
+          ACTIVE: ${{ env.ACTIVE }}
+          OUTPORT: ${{ env.OUT_PORT }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        with:
+          host: ${{ env.REMOTE_HOST }}
+          username: ${{ vars.AWS_DEVELOPMENT_SERVER_LOGIN }}
+          key: ${{ secrets.REMOTE_AWS_DEV_PRIVATE_SSH_KEY }}
+          envs: ECR_TOKEN,ECR_REGISTRY,ECR_REPOSITORY,ACTIVE,OUTPORT,OPENAI_API_KEY,PEXELS_API_KEY
+          script: |
+            echo ${ECR_TOKEN} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+            mkdir -p /home/forge/seechange-slides-${ACTIVE}/app_data
+            ENV_FILE="/home/forge/seechange-slides-${ACTIVE}/${ACTIVE}.env"
+            {
+              echo "MIGRATE_DATABASE_ON_STARTUP=true"
+              echo "CAN_CHANGE_KEYS=true"
+              echo "LLM=openai"
+              echo "OPENAI_MODEL=gpt-4.1"
+              echo "IMAGE_PROVIDER=pexels"
+              echo "DISABLE_ANONYMOUS_TRACKING=true"
+              echo "OPENAI_API_KEY=${OPENAI_API_KEY}"
+              echo "PEXELS_API_KEY=${PEXELS_API_KEY}"
+            } > "${ENV_FILE}"
+            IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}/${ACTIVE}:${ACTIVE}${{ github.sha }}"
+            docker pull ${IMAGE_URI}
+            if [ "$(docker ps -a --format '{{.Names}}' | grep -c ${{ env.NAME }})" -gt 0 ]; then
+              docker stop -t 30 ${{ env.NAME }} || true
+              docker rm -f ${{ env.NAME }} || true
+            fi
+            docker run --name ${{ env.NAME }} -d \
+              -p ${OUTPORT}:80 \
+              -m 2048m \
+              --env-file "${ENV_FILE}" \
+              -v /home/forge/seechange-slides-${ACTIVE}/app_data:/app_data \
+              --restart unless-stopped \
+              ${IMAGE_URI}
+            docker image prune --force
+            docker container prune --force
