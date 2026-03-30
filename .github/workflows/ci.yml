@@ -77,15 +77,21 @@ jobs:
           OUTPORT: ${{ env.OUT_PORT }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PEXELS_API_KEY_BACKUP_1: ${{ secrets.PEXELS_API_KEY_BACKUP_1 }}
+          PEXELS_API_KEY_BACKUP_2: ${{ secrets.PEXELS_API_KEY_BACKUP_2 }}
         with:
           host: ${{ env.REMOTE_HOST }}
           username: ${{ vars.AWS_DEVELOPMENT_SERVER_LOGIN }}
           key: ${{ secrets.REMOTE_AWS_DEV_PRIVATE_SSH_KEY }}
-          envs: ECR_TOKEN,ECR_REGISTRY,ECR_REPOSITORY,ACTIVE,OUTPORT,OPENAI_API_KEY,PEXELS_API_KEY
+          envs: ECR_TOKEN,ECR_REGISTRY,ECR_REPOSITORY,ACTIVE,OUTPORT,OPENAI_API_KEY,PEXELS_API_KEY,PEXELS_API_KEY_BACKUP_1,PEXELS_API_KEY_BACKUP_2
           script: |
             echo ${ECR_TOKEN} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
             mkdir -p /home/forge/seechange-slides-${ACTIVE}/app_data
             ENV_FILE="/home/forge/seechange-slides-${ACTIVE}/${ACTIVE}.env"
+            PEXELS_KEYS=""
+            [ -n "$PEXELS_API_KEY" ] && PEXELS_KEYS="$PEXELS_API_KEY"
+            [ -n "$PEXELS_API_KEY_BACKUP_1" ] && PEXELS_KEYS="${PEXELS_KEYS:+$PEXELS_KEYS,}$PEXELS_API_KEY_BACKUP_1"
+            [ -n "$PEXELS_API_KEY_BACKUP_2" ] && PEXELS_KEYS="${PEXELS_KEYS:+$PEXELS_KEYS,}$PEXELS_API_KEY_BACKUP_2"
             {
               echo "MIGRATE_DATABASE_ON_STARTUP=true"
               echo "CAN_CHANGE_KEYS=true"
@@ -95,6 +101,7 @@ jobs:
               echo "DISABLE_ANONYMOUS_TRACKING=true"
               echo "OPENAI_API_KEY=${OPENAI_API_KEY}"
               echo "PEXELS_API_KEY=${PEXELS_API_KEY}"
+              echo "PEXELS_KEYS=${PEXELS_KEYS}"
             } > "${ENV_FILE}"
             IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}/${ACTIVE}:${ACTIVE}${{ github.sha }}"
             docker pull ${IMAGE_URI}
