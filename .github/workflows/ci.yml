@@ -107,7 +107,7 @@ jobs:
             fi
             docker run --name ${{ env.NAME }} -d \
               -p ${OUTPORT}:80 \
-              -m 2048m \
+              -m 6144 \
               --env-file "${ENV_FILE}" \
               -v /home/forge/seechange-slides-${ACTIVE}/app_data:/app_data \
               --restart unless-stopped \
