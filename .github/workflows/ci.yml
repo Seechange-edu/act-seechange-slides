@@ -100,11 +100,11 @@ jobs:
               echo "PEXELS_API_KEY=${PEXELS_API_KEY}"
               echo "PEXELS_KEYS=${PEXELS_KEYS}"
             } > "${ENV_FILE}"
-            docker pull ${IMAGE_URI}
             if [ "$(docker ps -a --format '{{.Names}}' | grep -c ${{ env.NAME }})" -gt 0 ]; then
               docker stop -t 30 ${{ env.NAME }} || true
               docker rm -f ${{ env.NAME }} || true
             fi
+            docker pull ${IMAGE_URI}
             docker run --name ${{ env.NAME }} -d \
               -p ${OUTPORT}:80 \
               -m 6144m \
