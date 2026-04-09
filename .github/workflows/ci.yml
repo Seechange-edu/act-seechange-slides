@@ -103,6 +103,8 @@ jobs:
             if [ "$(docker ps -a --format '{{.Names}}' | grep -c ${{ env.NAME }})" -gt 0 ]; then
               docker stop -t 30 ${{ env.NAME }} || true
               docker rm -f ${{ env.NAME }} || true
+              docker image prune --force
+              docker container prune --force
             fi
             docker pull ${IMAGE_URI}
             docker run --name ${{ env.NAME }} -d \
@@ -112,5 +114,3 @@ jobs:
               -v /home/forge/seechange-slides-${ACTIVE}/app_data:/app_data \
               --restart unless-stopped \
               ${IMAGE_URI}
-            docker image prune --force
-            docker container prune --force
