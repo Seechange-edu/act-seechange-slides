@@ -141,6 +141,7 @@ jobs:
           envs: ECR_TOKEN,ECR_REGISTRY,IMAGE_URI,ACTIVE,OUTPORT,OPENAI_API_KEY,PEXELS_API_KEY,PEXELS_API_KEY_BACKUP_1,PEXELS_API_KEY_BACKUP_2,TEAMS_ERROR_WEBHOOK_URL
           script: |
             echo ${ECR_TOKEN} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+            docker pull "${IMAGE_URI}" || exit 1
             mkdir -p /home/forge/seechange-slides-${ACTIVE}/app_data
             ENV_FILE="/home/forge/seechange-slides-${ACTIVE}/${ACTIVE}.env"
             PEXELS_KEYS=""
@@ -164,9 +165,7 @@ jobs:
               docker stop -t 30 ${{ env.NAME }} || true
               docker rm -f ${{ env.NAME }} || true
               docker container prune --force
-              docker rmi -f ${IMAGE_URI} || true
             fi
-            docker pull ${IMAGE_URI}
             docker run --name ${{ env.NAME }} -d \
               -p ${OUTPORT}:80 \
               -m 6144m \
