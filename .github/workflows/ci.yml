@@ -168,7 +168,6 @@ jobs:
             if [ "$(docker ps -a --format '{{.Names}}' | grep -c ${{ env.NAME }})" -gt 0 ]; then
               docker stop -t 30 ${{ env.NAME }} || true
               docker rm -f ${{ env.NAME }} || true
-              docker container prune --force
             fi
             docker run --name ${{ env.NAME }} -d \
               -p ${OUTPORT}:80 \
