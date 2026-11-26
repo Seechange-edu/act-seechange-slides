@@ -142,25 +142,29 @@ jobs:
           script: |
             echo ${ECR_TOKEN} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
             docker pull "${IMAGE_URI}" || exit 1
-            mkdir -p /home/forge/seechange-slides-${ACTIVE}/app_data
+            mkdir -p "/home/forge/seechange-slides-${ACTIVE}/app_data" || exit 1
             ENV_FILE="/home/forge/seechange-slides-${ACTIVE}/${ACTIVE}.env"
             PEXELS_KEYS=""
             [ -n "$PEXELS_API_KEY" ] && PEXELS_KEYS="$PEXELS_API_KEY"
             [ -n "$PEXELS_API_KEY_BACKUP_1" ] && PEXELS_KEYS="${PEXELS_KEYS:+$PEXELS_KEYS,}$PEXELS_API_KEY_BACKUP_1"
             [ -n "$PEXELS_API_KEY_BACKUP_2" ] && PEXELS_KEYS="${PEXELS_KEYS:+$PEXELS_KEYS,}$PEXELS_API_KEY_BACKUP_2"
-            {
-              echo "MIGRATE_DATABASE_ON_STARTUP=true"
-              echo "CAN_CHANGE_KEYS=true"
-              echo "LLM=openai"
-              echo "OPENAI_MODEL=gpt-5.4-mini"
-              echo "IMAGE_PROVIDER=pexels"
-              echo "DISABLE_ANONYMOUS_TRACKING=true"
-              echo "OPENAI_API_KEY=${OPENAI_API_KEY}"
-              echo "PEXELS_API_KEY=${PEXELS_API_KEY}"
-              echo "PEXELS_KEYS=${PEXELS_KEYS}"
-              echo "ENVIRONMENT=${ACTIVE}"
-              echo "TEAMS_WEBHOOK_URL=${TEAMS_ERROR_WEBHOOK_URL}"
-            } > "${ENV_FILE}"
+            (
+              TMP_ENV_FILE=$(mktemp -- "${ENV_FILE}.XXXXXX") || exit 1
+              trap 'rm -f -- "$TMP_ENV_FILE"' EXIT
+              printf '%s\n' \
+                "MIGRATE_DATABASE_ON_STARTUP=true" \
+                "CAN_CHANGE_KEYS=true" \
+                "LLM=openai" \
+                "OPENAI_MODEL=gpt-5.4-mini" \
+                "IMAGE_PROVIDER=pexels" \
+                "DISABLE_ANONYMOUS_TRACKING=true" \
+                "OPENAI_API_KEY=${OPENAI_API_KEY}" \
+                "PEXELS_API_KEY=${PEXELS_API_KEY}" \
+                "PEXELS_KEYS=${PEXELS_KEYS}" \
+                "ENVIRONMENT=${ACTIVE}" \
+                "TEAMS_WEBHOOK_URL=${TEAMS_ERROR_WEBHOOK_URL}" > "$TMP_ENV_FILE" || exit 1
+              mv -fT -- "$TMP_ENV_FILE" "$ENV_FILE" || exit 1
+            ) || exit 1
             if [ "$(docker ps -a --format '{{.Names}}' | grep -c ${{ env.NAME }})" -gt 0 ]; then
               docker stop -t 30 ${{ env.NAME }} || true
               docker rm -f ${{ env.NAME }} || true
